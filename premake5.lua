@@ -1,3 +1,6 @@
+tinybvhIncludes = {}
+tinybvhIncludes["glm"] = "../glm"
+
 project "tinybvh"
 	kind "StaticLib"
 	language "C++"
@@ -16,7 +19,8 @@ project "tinybvh"
 
 	includedirs
 	{
-		"external/OpenCL/inc"
+		"external/OpenCL/inc",
+		"%{tinybvhIncludes.glm}"
 	}
 
 	links
