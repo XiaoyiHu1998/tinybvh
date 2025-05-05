@@ -36,6 +36,8 @@ THE SOFTWARE.
 //   #include "tiny_ocl.h"
 //
 
+#include <iostream> // Temp fix for Windows.h MessageBox error when compiling with unicode characters
+
 #ifndef TINY_OCL_H_
 #define TINY_OCL_H_
 
@@ -412,7 +414,8 @@ void FatalError( const char* fmt, ... )
 	vsnprintf( t, sizeof( t ) - 2, fmt, args );
 	va_end( args );
 #ifdef _WINDOWS_ // i.e., windows.h has been included.
-	MessageBox( NULL, t, "Fatal error", MB_OK );
+	//MessageBox( NULL, t, L"Fatal error", MB_OK );
+	std::cout << "Fatal error tiny_ocl: windows.h has been included." << std::endl;
 #else
 	fprintf( stderr, t );
 #endif

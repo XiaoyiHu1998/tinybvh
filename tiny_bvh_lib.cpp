@@ -14,7 +14,3 @@
 
 #define TINYBVH_IMPLEMENTATION
 #include "tiny_bvh.h"
-
-#define TINY_OCL_GLINTEROP
-//#define TINY_OCL_IMPLEMENTATION
-#include "tiny_ocl.h"
