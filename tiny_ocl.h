@@ -383,7 +383,7 @@ public:
 #ifdef TINY_OCL_IMPLEMENTATION
 
 #ifdef _MSC_VER
-#pragma comment( lib, "../external/OpenCL/lib/OpenCL.lib" )
+#pragma comment( lib, "OpenCL.lib" )
 #endif
 #ifdef TINY_OCL_GLINTEROP
 #include "cl_gl.h"
