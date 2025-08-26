@@ -15,6 +15,7 @@
 // tests to perform
 // #define BUILD_MIDPOINT
 #define BUILD_REFERENCE
+#define BUILD_FULLSWEEP
 #define BUILD_DOUBLE
 #define BUILD_AVX
 #define BUILD_NEON
@@ -23,16 +24,16 @@
 #define REFIT_MBVH4
 #define REFIT_MBVH8
 #define TRAVERSE_2WAY_ST
-// #define TRAVERSE_ALT2WAY_ST
-// #define TRAVERSE_SOA2WAY_ST
+#define TRAVERSE_ALT2WAY_ST
+#define TRAVERSE_SOA2WAY_ST
 #define TRAVERSE_4WAY
 #define TRAVERSE_8WAY
 #define TRAVERSE_2WAY_DBL
 // #define TRAVERSE_CWBVH
-#define TRAVERSE_2WAY_MT
-#define TRAVERSE_2WAY_MT_PACKET
-// #define TRAVERSE_OPTIMIZED_ST
-// #define TRAVERSE_8WAY_OPTIMIZED
+// #define TRAVERSE_2WAY_MT
+// #define TRAVERSE_2WAY_MT_PACKET
+#define TRAVERSE_OPTIMIZED_ST
+#define TRAVERSE_8WAY_OPTIMIZED
 // #define EMBREE_BUILD // win64-only for now.
 // #define EMBREE_TRAVERSE // win64-only for now.
 // #define MADMAN_BUILD_FAST
@@ -98,9 +99,10 @@ using PrecomputedTri = bvh::v2::PrecomputedTri<_Scalar>;
 
 bvhvec4* triangles = 0;
 #include <fstream>
+#include <vector>
 int verts = 0;
 float avgCost = 0;
-float traceTime, buildTime, refitTime, * refDist = 0, * refDistFull = 0, refU, refV, refUFull, refVFull;
+float traceTime, optimizeTime, buildTime, refitTime, * refDist = 0, * refDistFull = 0, refU, refV, refUFull, refVFull;
 unsigned refOccluded[3] = {}, * refOccl[3] = {};
 unsigned Nfull, Nsmall;
 Ray* fullBatch[3], * smallBatch[3], * smallDiffuse[3];
@@ -111,6 +113,7 @@ RayEx* doubleBatch[3];
 
 // bvh layouts
 BVH* mybvh = new BVH();
+BVH* sweepbvh = new BVH();
 BVH* ref_bvh = new BVH();
 BVH_Verbose* bvh_verbose = 0;
 BVH_Double* bvh_double = new BVH_Double();
@@ -122,7 +125,8 @@ BVH4_CPU* bvh4_cpu = 0;
 BVH4_GPU* bvh4_gpu = 0;
 BVH8_CWBVH* cwbvh = 0;
 BVH8_CPU* bvh8_cpu = 0;
-enum { _DEFAULT = 1, _BVH, _VERBOSE, _DOUBLE, _SOA, _GPU2, _BVH4, _CPU4, _ALT4, _CPU4A, _CPU8, _GPU4, _BVH8, _CWBVH };
+BVH8_CPU* bvh8_cpu_opt = 0;
+enum { _DEFAULT = 1, _BVH, _SWEEP, _VERBOSE, _DOUBLE, _SOA, _GPU2, _BVH4, _CPU4, _ALT4, _CPU4A, _CPU8, _OPT8, _GPU4, _BVH8, _CWBVH };
 
 #if defined _WIN32 || defined _WIN64
 #if defined EMBREE_BUILD || defined EMBREE_TRAVERSE
@@ -191,6 +195,7 @@ float TestPrimaryRays( uint32_t layout, unsigned N, unsigned passes, float* avgC
 		switch (layout)
 		{
 		case _BVH: for (unsigned i = 0; i < N; i++) travCost += mybvh->Intersect( batch[i] ); break;
+		case _SWEEP: for (unsigned i = 0; i < N; i++) travCost += sweepbvh->Intersect( batch[i] ); break;
 		case _DEFAULT: for (unsigned i = 0; i < N; i++) travCost += ref_bvh->Intersect( batch[i] ); break;
 		case _GPU2: for (unsigned i = 0; i < N; i++) travCost += bvh_gpu->Intersect( batch[i] ); break;
 		case _GPU4: for (unsigned i = 0; i < N; i++) travCost += bvh4_gpu->Intersect( batch[i] ); break;
@@ -201,6 +206,7 @@ float TestPrimaryRays( uint32_t layout, unsigned N, unsigned passes, float* avgC
 		case _CWBVH: for (unsigned i = 0; i < N; i++) travCost += cwbvh->Intersect( batch[i] ); break;
 		case _SOA: for (unsigned i = 0; i < N; i++) travCost += bvh_soa->Intersect( batch[i] ); break;
 		case _CPU8: for (unsigned i = 0; i < N; i++) travCost += bvh8_cpu->Intersect( batch[i] ); break;
+		case _OPT8: for (unsigned i = 0; i < N; i++) travCost += bvh8_cpu_opt->Intersect( batch[i] ); break;
 		#endif
 		default: break;
 		};
@@ -228,6 +234,7 @@ float TestDiffuseRays( uint32_t layout, unsigned passes, float* avgCost = 0 )
 		switch (layout)
 		{
 		case _BVH: for (unsigned i = 0; i < Nsmall; i++) travCost += mybvh->Intersect( batch[i] ); break;
+		case _SWEEP: for (unsigned i = 0; i < Nsmall; i++) travCost += sweepbvh->Intersect( batch[i] ); break;
 		case _DEFAULT: for (unsigned i = 0; i < Nsmall; i++) travCost += ref_bvh->Intersect( batch[i] ); break;
 		case _GPU2: for (unsigned i = 0; i < Nsmall; i++) travCost += bvh_gpu->Intersect( batch[i] ); break;
 		case _GPU4: for (unsigned i = 0; i < Nsmall; i++) travCost += bvh4_gpu->Intersect( batch[i] ); break;
@@ -237,7 +244,8 @@ float TestDiffuseRays( uint32_t layout, unsigned passes, float* avgCost = 0 )
 		#ifdef BVH_USEAVX
 		case _CWBVH: for (unsigned i = 0; i < Nsmall; i++) travCost += cwbvh->Intersect( batch[i] ); break;
 		case _SOA: for (unsigned i = 0; i < Nsmall; i++) travCost += bvh_soa->Intersect( batch[i] ); break;
-		case _CPU8: for (unsigned i = 0; i < Nsmall; i++) travCost += bvh8_cpu->Intersect( batch[i] );
+		case _CPU8: for (unsigned i = 0; i < Nsmall; i++) travCost += bvh8_cpu->Intersect( batch[i] ); break;
+		case _OPT8: for (unsigned i = 0; i < Nsmall; i++) travCost += bvh8_cpu_opt->Intersect( batch[i] ); break;
 		#endif
 		default: break;
 		};
@@ -308,6 +316,7 @@ float TestShadowRays( uint32_t layout, unsigned N, unsigned passes )
 		#endif
 		#ifdef BVH_USEAVX2
 		case _CPU8: for (unsigned i = 0; i < N; i++) occluded += bvh8_cpu->IsOccluded( batch[i] ); break;
+		case _OPT8: for (unsigned i = 0; i < N; i++) occluded += bvh8_cpu_opt->IsOccluded( batch[i] ); break;
 		#endif
 		case _GPU2: for (unsigned i = 0; i < N; i++) occluded += bvh_gpu->IsOccluded( batch[i] ); break;
 		case _DEFAULT: for (unsigned i = 0; i < N; i++) occluded += mybvh->IsOccluded( batch[i] ); break;
@@ -374,7 +383,6 @@ void ValidateTraceResult( float* ref, unsigned N, unsigned line )
 // Multi-threading
 #include <atomic>
 #include <thread>
-#include <vector>
 
 static unsigned threadCount = std::thread::hardware_concurrency();
 static std::atomic<int> batchIdx( 0 );
@@ -592,7 +600,7 @@ int main()
 
 #ifdef BUILD_REFERENCE
 
-	// measure single-core bvh construction time - reference builder
+	// measure single-core bvh construction time - reference binned SAH builder
 	printf( "- reference builder: " );
 	t.reset();
 	for (int pass = 0; pass < 3; pass++) mybvh->Build( triangles, verts / 3 );
@@ -600,6 +608,21 @@ int main()
 	TestPrimaryRays( _BVH, Nsmall, 3, &avgCost );
 	printf( "%7.2fms for %7i triangles ", buildTime * 1000.0f, verts / 3 );
 	printf( "- %6i nodes, SAH=%.2f, rayCost=%.2f\n", mybvh->usedNodes, mybvh->SAHCost(), avgCost );
+
+#endif
+
+#ifdef BUILD_FULLSWEEP
+
+	// measure single-core bvh construction time - full-sweep SAH builder
+	printf( "- fullsweep builder" );
+	t.reset();
+	sweepbvh->useFullSweep = true;
+	sweepbvh->Build( triangles, verts / 3 );
+	buildTime = t.elapsed();
+	printf( ": " );
+	TestPrimaryRays( _SWEEP, Nsmall, 3, &avgCost );
+	printf( "%7.2fms for %7i triangles ", buildTime * 1000.0f, verts / 3 );
+	printf( "- %6i nodes, SAH=%.2f, rayCost=%.2f\n", sweepbvh->usedNodes, sweepbvh->SAHCost(), avgCost );
 
 #endif
 
@@ -949,6 +972,24 @@ int main()
 	traceTime = TestDiffuseRays( _CPU8, 3 );
 	printf( "diffuse: %7.2fMRays/s\n", (float)Nsmall / traceTime * 1e-6f );
 
+	// If it is available, rerun with optimized BVH
+	BVH optimized;
+	if (optimized.Load( "./testdata/opt_rrs/sbvh_cryteksponza_opt.bin", triangles, verts / 3 ))
+	{
+		bvh8_cpu_opt = new BVH8_CPU();
+		bvh8_cpu_opt->bvh8.bvh.context = bvh8_cpu_opt->bvh8.context = optimized.context;
+		bvh8_cpu_opt->bvh8.bvh = optimized;
+		bvh8_cpu_opt->ConvertFrom( bvh8_cpu_opt->bvh8 );
+		PrepareTest();
+		printf( "- BVH8 (OPT)  - primary: " );
+		traceTime = TestPrimaryRays( _OPT8, Nsmall, 3 );
+		printf( "%7.2fMRays/s,  ", (float)Nsmall / traceTime * 1e-6f );
+		traceTime = TestShadowRays( _OPT8, Nsmall, 3 );
+		printf( "shadow: %7.2fMRays/s,  ", (float)Nsmall / traceTime * 1e-6f );
+		traceTime = TestDiffuseRays( _OPT8, 3 );
+		printf( "diffuse: %7.2fMRays/s\n", (float)Nsmall / traceTime * 1e-6f );
+	}
+
 #endif
 
 #if defined TRAVERSE_2WAY_DBL && defined BUILD_DOUBLE && defined DOUBLE_PRECISION_SUPPORT
@@ -987,40 +1028,24 @@ int main()
 	PrepareTest();
 	mybvh->Build( triangles, verts / 3 );
 	float prevSAH = mybvh->SAHCost();
-	if (!bvh_verbose)
-	{
-		bvh_verbose = new BVH_Verbose();
-		bvh_verbose->ConvertFrom( *mybvh );
-	}
 	t.reset();
 	mybvh->Optimize( 50, true );
+	optimizeTime = t.elapsed();
 	TestPrimaryRays( _BVH, Nsmall, 3, &avgCost );
-	printf( "done (%.2fs). New: %i nodes, SAH=%.2f to %.2f, rayCost=%.2f\n", t.elapsed(), mybvh->NodeCount(), prevSAH, mybvh->SAHCost(), avgCost );
+	printf( "done (%.2fs). New: %i nodes, SAH=%.2f to %.2f, rayCost=%.2f\n", optimizeTime, mybvh->NodeCount(), prevSAH, mybvh->SAHCost(), avgCost );
 
-#endif
-
-#ifdef TRAVERSE_OPTIMIZED_ST
-#ifdef BVH_USEAVX
-
-	// ALT_SOA
-	delete bvh_soa;
-	// Building a BVH_SoA over an optimized BVH: Careful, do not delete the
-	// passed BVH; we use some of its data in the BVH_SoA.
-	bvh_soa = new BVH_SoA();
-	bvh_soa->ConvertFrom( *mybvh );
-	printf( "- BVH_SOA     - primary: " );
+	printf( "Optimizing 'full-sweep' SAH BVH...        " );
 	PrepareTest();
-	traceTime = TestPrimaryRays( _SOA, Nsmall, 3 );
-	ValidateTraceResult( refDist, Nsmall, __LINE__ );
-	// printf( "%4.2fM rays in %5.1fms (%7.2fMRays/s), ", (float)Nsmall * 1e-6f, traceTime * 1000, (float)Nsmall / traceTime * 1e-6f );
-	printf( "%7.2fMRays/s,  ", (float)Nsmall / traceTime * 1e-6f );
-	traceTime = TestShadowRays( _SOA, Nsmall, 3 );
-	// printf( "shadow: %5.1fms (%7.2fMRays/s)\n", traceTime * 1000, (float)Nsmall / traceTime * 1e-6f );
-	printf( "shadow: %7.2fMRays/s,  ", (float)Nsmall / traceTime * 1e-6f );
-	traceTime = TestDiffuseRays( _SOA, 3 );
-	printf( "diffuse: %7.2fMRays/s\n", (float)Nsmall / traceTime * 1e-6f );
+	mybvh->useFullSweep = true;
+	mybvh->Build( triangles, verts / 3 );
+	prevSAH = mybvh->SAHCost();
+	t.reset();
+	mybvh->Optimize( 50, true );
+	optimizeTime = t.elapsed();
+	TestPrimaryRays( _BVH, Nsmall, 3, &avgCost );
+	printf( "done (%.2fs). New: %i nodes, SAH=%.2f to %.2f, rayCost=%.2f\n", optimizeTime, mybvh->NodeCount(), prevSAH, mybvh->SAHCost(), avgCost );
+	mybvh->useFullSweep = false;
 
-#endif
 #endif
 
 #ifdef TRAVERSE_8WAY_OPTIMIZED
@@ -1408,15 +1433,19 @@ int main()
 
 	// verify memory management
 	delete mybvh;
+	delete sweepbvh;
+	delete ref_bvh;
 	delete bvh_verbose;
 	delete bvh_double;
 	delete bvh_soa;
 	delete bvh_gpu;
 	delete bvh4;
+	delete bvh8;
 	delete bvh4_cpu;
+	delete bvh8_cpu;
 	delete bvh4_gpu;
+	delete bvh8_cpu_opt;
 	delete cwbvh;
-
 	printf( "all done." );
 	return 0;
 }
