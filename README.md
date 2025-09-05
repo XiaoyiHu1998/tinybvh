@@ -51,23 +51,23 @@ The cross-platform fenster-based single-source **bitmap renderer** can be compil
 
 ````g++ -mwindows -O3 tiny_bvh_fenster.cpp -o tiny_bvh_fenster```` (on windows)
 
-````c++ --std=c++17 -framework Cocoa -O3 tiny_bvh_fenster.cpp -o tiny_bvh_fenster```` (on macOS)
+````c++ --std=c++11 -framework Cocoa -O3 tiny_bvh_fenster.cpp -o tiny_bvh_fenster```` (on macOS)
 
 The multi-threaded **path tracing** demo can be compiled with
 
 ````g++ -mwindows -O3 tiny_bvh_pt.cpp -o tiny_bvh_pt```` (on windows)
 
-````c++ --std=c++17 -framework Cocoa -O3 tiny_bvh_pt.cpp -o tiny_bvh_pt```` (on macOS)
+````c++ --std=c++11 -framework Cocoa -O3 tiny_bvh_pt.cpp -o tiny_bvh_pt```` (on macOS)
 
 The **performance measurement tool** can be compiled with:
 
 ````g++ -mavx2 -mfma -Ofast tiny_bvh_speedtest.cpp -o tiny_bvh_speedtest```` (on windows)
 
-````c++ --std=c++17 -framework OpenCL -Ofast tiny_bvh_speedtest.cpp -o tiny_bvh_speedtest```` (on macOS)
+````c++ --std=c++11 -framework OpenCL -Ofast tiny_bvh_speedtest.cpp -o tiny_bvh_speedtest```` (on macOS)
 
 Many additional demos are provided, demonstrating features of the library in small source files.
 
-# Version 1.6.3
+# Version 1.6.7
 
 Basic use:
 
@@ -173,11 +173,15 @@ TinyBVH is a cross-platfrom library and should build on any platform that suppor
 # TinyBVH in the Wild
 A list of projects using TinyBVH:
 * [EA SEED's Gigi](https://github.com/electronicarts/gigi/releases/tag/v1.0.0): Uses TinyBVH for WebGPU ray tracing, "..as fast as when using the DXR api in DX12".
-* [unity-tinybvh](https://github.com/andr3wmac/unity-tinybvh): An example implementation for TinyBVH in Unity and a foundation for building compute based raytracing solutions, by Andrew MacIntyre.
+* [wave_tracer](https://github.com/ssteinberg/wave_tracer) by Shlomi Steinberg uses TinyBVH to trace path segments.
 * [TrenchBroomBFG](https://github.com/RobertBeckebans/TrenchBroomBFG), by Robert Beckebans. "TinyBVH allows to load bigger glTF 2 maps almost instantly instead of minutes". 
+* [unity-tinybvh](https://github.com/andr3wmac/unity-tinybvh): An example implementation for TinyBVH in Unity and a foundation for building compute based raytracing solutions, by Andrew MacIntyre.
 
 # TinyBVH Rust bindings
 The TinyBVH library can now also be used from Rust, with the [Rust bindings](https://docs.rs/tinybvh-rs/latest/tinybvh_rs) provided by David Peicho.
+
+# TinyBVH Python bindings
+Florent Le Moël created Python bindings for TinyBVH. You can find details in the [pytinybvh repository](https://github.com/FlorentLM/pytinybvh) on GitHub.
 
 Created or know about other projects? [Let me know](mailto:bikker.j@protonmail.com)!
 
